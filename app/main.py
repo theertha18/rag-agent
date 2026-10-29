@@ -2,18 +2,18 @@
 Run with: uvicorn app.main:app --reload
 
 One endpoint: POST /ask {"question": "..."}
-Retrieves the most relevant chunks from Chroma, then asks Claude to answer
+Retrieves the most relevant chunks from Chroma, then asks the LLM to answer
 using only that context. This is the whole "RAG" part — tool calling and
 the agent loop are a deliberate next step, not part of this file.
 """
 
-import os
 import pathlib
 
-import anthropic
 import chromadb
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
+
+from app.llm import generate
 
 DB_DIR = pathlib.Path(__file__).parent.parent / "chroma_db"
 COLLECTION_NAME = "documents"
@@ -22,7 +22,6 @@ TOP_K = 4
 app = FastAPI(title="RAG Agent")
 
 _client = chromadb.PersistentClient(path=str(DB_DIR))
-_anthropic = anthropic.Anthropic()  # reads ANTHROPIC_API_KEY from env
 
 
 class AskRequest(BaseModel):
@@ -73,14 +72,10 @@ def ask(request: AskRequest):
 
     prompt = build_prompt(request.question, documents)
 
-    message = _anthropic.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=500,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    answer_text = "".join(
-        block.text for block in message.content if getattr(block, "type", None) == "text"
-    )
+    try:
+        answer_text = generate(prompt)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"LLM call failed: {e}")
 
     sources = [
         SourceChunk(source=meta["source"], text=doc)
