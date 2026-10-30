@@ -1,19 +1,21 @@
 """
-Step 2: let the model ask for tools.
+The agent: a loop where the model asks for tools until it can answer.
 
 Run:
     python -m app.agent "Which of my projects used ultrasonic sensors?"
     python -m app.agent                      (runs three example questions)
 
-What happens, in order (the printout shows each step):
+What happens (the printout shows each step):
   1. We send the model your question plus a "card" describing each tool.
   2. The model replies with a request ("run find_projects with keyword
      ultrasonic") instead of an answer. It cannot run anything itself.
   3. OUR code runs the real function and sends the result back.
-  4. The model writes the final answer from that result.
+  4. The model either asks for another tool (back to step 3) or writes the
+     final answer.
 
-This file does one round of tool use. Step 3 turns it into a loop, so the
-model can ask for another tool after seeing a result.
+Safety limits: the model can only use the tools listed here, can only pass the
+arguments their cards declare, and gets at most MAX_ROUNDS rounds of tool use.
+If it is still asking after that, it is told to answer with what it has.
 
 Needs GEMINI_API_KEY (and optionally GEMINI_MODEL) set, like /ask.
 """
@@ -25,6 +27,7 @@ from app import tools
 from app.llm import DEFAULT_GEMINI_MODEL
 
 GITHUB_USERNAME = os.environ.get("GITHUB_USERNAME", "theertha18")
+MAX_ROUNDS = 5  # how many times the model may ask for tools before it must answer
 
 SYSTEM_PROMPT = (
     "You answer questions about one person's background, projects and code, "
@@ -136,8 +139,15 @@ def _describe(payload: dict) -> str:
     return f"{len(result)} result(s)" if isinstance(result, list) else "done"
 
 
-def ask(question: str, client=None, model: str | None = None, say=print) -> str:
-    """One question, one round of tools, one final answer."""
+def _final_text(response) -> str:
+    # Reading .text on a reply that still contains tool requests makes the SDK
+    # print a warning, so only read it when there are none.
+    return "" if response.function_calls else (response.text or "")
+
+
+def ask(question: str, client=None, model: str | None = None, say=print,
+        max_rounds: int = MAX_ROUNDS) -> str:
+    """Ask one question. The model may use tools for up to max_rounds rounds."""
     from google.genai import types
 
     if client is None:
@@ -155,41 +165,45 @@ def ask(question: str, client=None, model: str | None = None, say=print) -> str:
     say("=" * 78)
     say(f"QUESTION: {question}\n")
 
-    response = client.models.generate_content(model=model, contents=contents, config=config)
-    calls = response.function_calls or []
+    for round_number in range(1, max_rounds + 1):
+        response = client.models.generate_content(model=model, contents=contents, config=config)
+        calls = response.function_calls or []
 
-    if not calls:
-        say("The model answered without using a tool:")
-        say(f"    {response.text}\n")
-        return response.text or ""
+        if not calls:
+            if round_number == 1:
+                say("The model answered without using a tool:")
+            else:
+                say(f"STEP {round_number}: the model has what it needs and ANSWERS:")
+            say(f"    {response.text}\n")
+            return response.text or ""
 
-    # Keep the model's own request in the conversation, then add our results.
-    contents.append(response.candidates[0].content)
-    result_parts = []
-    for call in calls:
-        args = dict(call.args or {})
-        say(f"STEP 1: the model ASKS for a tool:  {call.name}({args})")
-        payload = run_tool(call.name, args)
-        say(f"        your code RAN it: {_describe(payload)}")
-        say("        the result goes back to the model\n")
-        result_parts.append(_response_part(types, call, payload))
-    contents.append(types.Content(role="user", parts=result_parts))
+        # Keep the model's own request in the conversation, then add our results.
+        contents.append(response.candidates[0].content)
+        result_parts = []
+        for call in calls:
+            args = dict(call.args or {})
+            say(f"STEP {round_number}: the model ASKS for a tool:  {call.name}({args})")
+            payload = run_tool(call.name, args)
+            say(f"        your code RAN it: {_describe(payload)}")
+            say("        the result goes back to the model\n")
+            result_parts.append(_response_part(types, call, payload))
+        contents.append(types.Content(role="user", parts=result_parts))
 
-    response = client.models.generate_content(model=model, contents=contents, config=config)
-
-    if response.function_calls:
-        say("STEP 2: the model asked for ANOTHER tool. Handling that is step 3 "
-            "(the loop), so this version stops here.\n")
-        return response.text or ""
-
-    say("STEP 2: the model has what it needs and ANSWERS:")
-    say(f"    {response.text}\n")
-    return response.text or ""
+    # Step limit reached: take the tools away and ask for an answer from what we have.
+    say(f"Step limit reached ({max_rounds} rounds). Asking the model to answer with what it has.")
+    final_config = types.GenerateContentConfig(
+        system_instruction=SYSTEM_PROMPT
+        + " You have no tools left. Answer now using only the information already returned above."
+    )
+    response = client.models.generate_content(model=model, contents=contents, config=final_config)
+    say("The model ANSWERS:")
+    say(f"    {_final_text(response)}\n")
+    return _final_text(response)
 
 
 EXAMPLES = [
     "Which of my projects used ultrasonic sensors?",
-    "What is my newest GitHub repo?",
+    "Which of my projects use Python, and what is my newest GitHub repo?",
     "What did I do with MQTT at Bosch Rexroth?",
 ]
 
@@ -197,7 +211,10 @@ EXAMPLES = [
 def main():
     questions = [" ".join(sys.argv[1:])] if len(sys.argv) > 1 else EXAMPLES
     for question in questions:
-        ask(question)
+        try:
+            ask(question)
+        except Exception as error:  # e.g. rate limit, bad key, no network
+            print(f"Stopped: {type(error).__name__}: {error}\n")
 
 
 if __name__ == "__main__":

@@ -109,14 +109,61 @@ expectation, raised k, and moved one hard question out of the score.
   cutoff.** "What did Theertha do at Siemens?" has a best distance of 1.39,
   below the 1.5 cutoff, so it reaches the language model. Only one such example
   exists in the test set, so I have not tightened the cutoff.
+- **`/ask` returns its retrieved chunks as `sources` even when the model says
+  the answer is not in them.** The answer text is correct, but the sources list
+  then looks like supporting evidence. Planned fix: have the model signal "not
+  found" explicitly and return an empty sources list in that case.
 - **The test set is small (23 questions) and written by the author.** Treat the
   numbers as indicative, not as a benchmark.
 
-## What's next (not tonight)
+## The agent (tool calling)
 
-- `app/tools.py` — a function the LLM can call (e.g. query Postgres, hit an API)
-- an agent loop in `main.py` that lets Claude decide to call a tool,
-  read the result, and decide again before answering
-- a tiny eval script: does the answer actually use the retrieved chunks,
-  or did the model ignore them?
-- `.github/workflows/ci.yml` to run tests on push (Project 3)
+`/ask` always does the same thing: search the documents, then answer. The agent
+lets the model choose. It is given three tools and a short description of each:
+
+| Tool | Use |
+|---|---|
+| `search_documents` | explain what was done and how (the RAG search) |
+| `find_projects` | exact lists and counts, from a small SQLite database |
+| `github_repos` | live data from the GitHub API |
+
+The model never runs anything itself. It replies with a request ("call
+`find_projects` with keyword ultrasonic"), the code runs the real function and
+sends the result back, and this repeats until the model can answer.
+
+```bash
+python -m app.seed_db        # once: builds the project database
+python -m app.agent "Which of my projects used ultrasonic sensors?"
+python -m app.agent          # three example questions
+```
+
+The printout shows every step: which tool the model asked for, what the code
+ran, and the final answer. Written in plain Python on purpose, without a
+framework, so each part is visible.
+
+**Safety limits**
+
+- The model can only call the listed tools, and only with the arguments their
+  descriptions declare. Anything else it sends is dropped.
+- The project database is opened read-only and values are passed as query
+  parameters, never pasted into SQL.
+- A failing tool returns an error message to the model instead of crashing.
+- At most 5 rounds of tool use per question. After that the tools are taken
+  away and the model must answer with what it already has.
+
+Tests (`python -m unittest tests.test_tools tests.test_agent`) cover the tools,
+the argument filtering, the loop and the step limit, using a fake model, so
+they run offline.
+
+Plain RAG is enough for most questions about the documents. The agent earns its
+extra cost only on questions that need exact lists or live data, or more than
+one source.
+
+## What's next
+
+- an `/agent` endpoint in the FastAPI app (today the agent runs from the command line)
+- fix: return no `sources` from `/ask` when the model says the answer is not in them
+- hybrid search (keyword scoring plus embeddings) for exact names
+- `.github/workflows/ci.yml` to run the tests on every push
+- Dockerfile, then a Kubernetes deployment
+- the same agent rebuilt in LangGraph, for comparison

@@ -154,12 +154,12 @@ class AskTests(unittest.TestCase):
         return {"fn": lambda keyword="": tools.find_projects(keyword, db_path=self.db),
                 "args": {"keyword": str}}
 
-    def ask(self, replies, question="q"):
+    def ask(self, replies, question="q", **kwargs):
         client = FakeClient(replies)
         log = []
         with mock.patch.dict(sys.modules, fake_sdk_modules()), \
              mock.patch.dict(agent.TOOL_FUNCTIONS, {"find_projects": self.real_find_projects()}):
-            answer = agent.ask(question, client=client, model="m", say=log.append)
+            answer = agent.ask(question, client=client, model="m", say=log.append, **kwargs)
         return answer, client, "\n".join(log)
 
     def test_model_asks_for_a_tool_we_run_it_and_the_model_answers(self):
@@ -225,13 +225,69 @@ class AskTests(unittest.TestCase):
         parts = client.sent[1]["contents"][-1].parts
         self.assertEqual([p.function_response["id"] for p in parts], ["a", "b"])
 
-    def test_a_second_round_of_tool_requests_stops_cleanly(self):
+    def test_the_loop_runs_a_second_round_when_the_model_asks_again(self):
         answer, client, log = self.ask([
-            model_reply(calls=[tool_request("find_projects", {"keyword": "go"}, "a")]),
-            model_reply(text="partial", calls=[tool_request("find_projects", {"keyword": "x"}, "b")]),
+            model_reply(calls=[tool_request("find_projects", {"keyword": "python"}, "a")]),
+            model_reply(calls=[tool_request("find_projects", {"keyword": "go"}, "b")]),
+            model_reply(text="Both lookups done."),
         ])
-        self.assertEqual(len(client.sent), 2)  # no third call: that is step 3's job
-        self.assertIn("step 3", log)
+        self.assertEqual(answer, "Both lookups done.")
+        self.assertEqual(len(client.sent), 3)
+        self.assertIn("STEP 1", log)
+        self.assertIn("STEP 2", log)
+        self.assertIn("STEP 3: the model has what it needs", log)
+
+    def test_the_conversation_grows_with_every_round(self):
+        _, client, _ = self.ask([
+            model_reply(calls=[tool_request("find_projects", {"keyword": "python"}, "a")]),
+            model_reply(calls=[tool_request("find_projects", {"keyword": "go"}, "b")]),
+            model_reply(text="done"),
+        ])
+        lengths = [len(request["contents"]) for request in client.sent]
+        # question | + model request + our result | + model request + our result
+        self.assertEqual(lengths, [1, 3, 5])
+
+    def test_step_limit_takes_the_tools_away_and_forces_an_answer(self):
+        answer, client, log = self.ask(
+            [
+                model_reply(calls=[tool_request("find_projects", {"keyword": "a"}, "1")]),
+                model_reply(calls=[tool_request("find_projects", {"keyword": "b"}, "2")]),
+                model_reply(text="Best answer from what I have."),  # the forced final call
+            ],
+            max_rounds=2,
+        )
+        self.assertEqual(answer, "Best answer from what I have.")
+        self.assertEqual(len(client.sent), 3)  # 2 rounds of tools + 1 forced answer
+        forced_config = client.sent[2]["config"]
+        self.assertIsNone(forced_config.tools)
+        self.assertIn("no tools left", forced_config.system_instruction)
+        self.assertIn("Step limit reached", log)
+
+    def test_a_model_that_never_stops_asking_cannot_run_forever(self):
+        endless = [model_reply(calls=[tool_request("find_projects", {"keyword": "x"}, str(i))])
+                   for i in range(10)]
+        endless.append(model_reply(text="finally"))
+        _, client, _ = self.ask(endless[:3] + [model_reply(text="finally")], max_rounds=3)
+        self.assertEqual(len(client.sent), 4)  # 3 rounds + 1 forced answer, then it stops
+
+    def test_a_forced_answer_that_still_has_tool_requests_returns_empty_text(self):
+        answer, _, _ = self.ask(
+            [
+                model_reply(calls=[tool_request("find_projects", {"keyword": "a"}, "1")]),
+                model_reply(text="ignored", calls=[tool_request("find_projects", {"keyword": "b"}, "2")]),
+            ],
+            max_rounds=1,
+        )
+        self.assertEqual(answer, "")
+
+
+class MainTests(unittest.TestCase):
+    def test_a_failing_model_call_is_reported_not_raised(self):
+        with mock.patch.object(agent, "ask", side_effect=RuntimeError("429 rate limit")), \
+             mock.patch.object(sys, "argv", ["agent", "some question"]), \
+             mock.patch("builtins.print") as fake_print:
+            agent.main()  # must not raise
+        self.assertIn("429 rate limit", str(fake_print.call_args_list))
 
 
 if __name__ == "__main__":

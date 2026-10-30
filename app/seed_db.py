@@ -28,7 +28,7 @@ PROJECTS = [
         "academic",
         "Component of a provider management platform for creating service requests, tracking their "
         "status and evaluating provider offers. Built in an Agile/Kanban team, deployed on AWS.",
-        "Django, PostgreSQL, Spring Boot, REST API, AWS, Agile, Kanban",
+        "Python, Django, PostgreSQL, Spring Boot, REST API, AWS, Agile, Kanban",
     ),
     (
         "Cloud-based anomaly detection system",
