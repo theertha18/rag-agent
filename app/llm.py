@@ -17,7 +17,7 @@ Environment variables:
 
 import os
 
-DEFAULT_GEMINI_MODEL = "gemini-3.5-flash"
+DEFAULT_GEMINI_MODEL = "gemini-flash-latest"
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
 
 
