@@ -1,5 +1,7 @@
 # RAG Agent (Project 1)
 
+![CI](https://github.com/theertha18/rag-agent/actions/workflows/ci.yml/badge.svg)
+
 Minimal RAG API: drop documents in `docs/`, ingest them into a local Chroma
 vector store, then ask questions against them through a FastAPI endpoint
 that grounds its answer with an LLM (Gemini by default; Anthropic supported by setting `LLM_PROVIDER=anthropic`).
@@ -159,11 +161,24 @@ Plain RAG is enough for most questions about the documents. The agent earns its
 extra cost only on questions that need exact lists or live data, or more than
 one source.
 
+## Tests and continuous integration
+
+```bash
+python -m unittest discover -s tests -t . -v
+```
+
+41 offline unit tests cover the tools, the argument filtering, the agent loop
+and its step limit. They use a fake model and a temporary database, so they need
+no API key and no installed packages beyond the standard library.
+
+Every push and pull request runs the same tests plus a `ruff` lint on GitHub
+Actions (`.github/workflows/ci.yml`). The retrieval evaluation is not part of CI
+because it needs the private documents.
+
 ## What's next
 
 - an `/agent` endpoint in the FastAPI app (today the agent runs from the command line)
 - fix: return no `sources` from `/ask` when the model says the answer is not in them
 - hybrid search (keyword scoring plus embeddings) for exact names
-- `.github/workflows/ci.yml` to run the tests on every push
 - Dockerfile, then a Kubernetes deployment
 - the same agent rebuilt in LangGraph, for comparison

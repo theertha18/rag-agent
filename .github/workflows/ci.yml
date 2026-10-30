@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Install the linter
+        run: pip install ruff
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Syntax check
+        run: python -m compileall -q app tests
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -t . -v
