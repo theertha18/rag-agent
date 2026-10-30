@@ -1,5 +1,4 @@
-# RAG Agent (Project 1)
-
+# RAG Agent
 Minimal RAG API: drop documents in `docs/`, ingest them into a local Chroma
 vector store, then ask questions against them through a FastAPI endpoint
 that grounds its answer with an LLM (Gemini by default; Anthropic supported by setting `LLM_PROVIDER=anthropic`).
