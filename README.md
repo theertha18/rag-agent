@@ -1,4 +1,5 @@
-# RAG Agent
+# RAG Agent (Project 1)
+
 Minimal RAG API: drop documents in `docs/`, ingest them into a local Chroma
 vector store, then ask questions against them through a FastAPI endpoint
 that grounds its answer with an LLM (Gemini by default; Anthropic supported by setting `LLM_PROVIDER=anthropic`).
@@ -47,6 +48,20 @@ curl -X POST http://localhost:8000/ask \
 ```
 
 You should get back an answer plus the source chunks it was grounded in.
+
+## Evaluating retrieval
+
+```bash
+python -m app.evaluate          # default: top 4 chunks per question
+python -m app.evaluate --k 6    # try a different k
+```
+
+`eval_questions.json` holds test questions with the file (and keyword) each
+answer should come from. The script queries ChromaDB the same way `/ask`
+does, with no LLM calls, and reports source hit rate, keyword hit rate and
+mean reciprocal rank, plus what was retrieved for every failure. Re-run it
+after any change to chunking, embeddings, or `TOP_K`. Distances are
+lower = more similar.
 
 ## What's next (not tonight)
 
