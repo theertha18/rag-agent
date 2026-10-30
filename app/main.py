@@ -17,7 +17,11 @@ from app.llm import generate
 
 DB_DIR = pathlib.Path(__file__).parent.parent / "chroma_db"
 COLLECTION_NAME = "documents"
-TOP_K = 4
+TOP_K = 6
+# Chunks farther than this from the question are dropped. Chosen from the
+# evaluation: answerable questions' best matches were all well below it,
+# unanswerable ones well above it. Re-check with `python -m app.evaluate`.
+MAX_DISTANCE = 1.5
 
 app = FastAPI(title="RAG Agent")
 
@@ -64,11 +68,24 @@ def ask(request: AskRequest):
     collection = get_collection()
 
     results = collection.query(query_texts=[request.question], n_results=TOP_K)
-    documents = results["documents"][0]
-    metadatas = results["metadatas"][0]
+    kept = [
+        (doc, meta)
+        for doc, meta, dist in zip(
+            results["documents"][0], results["metadatas"][0], results["distances"][0]
+        )
+        if dist <= MAX_DISTANCE
+    ]
 
-    if not documents:
-        raise HTTPException(status_code=404, detail="No relevant context found.")
+    # Nothing close enough: say so without calling the LLM (saves a call and
+    # removes the chance of it making something up).
+    if not kept:
+        return AskResponse(
+            answer="I couldn't find anything relevant to that question in the indexed documents.",
+            sources=[],
+        )
+
+    documents = [doc for doc, _ in kept]
+    metadatas = [meta for _, meta in kept]
 
     prompt = build_prompt(request.question, documents)
 
