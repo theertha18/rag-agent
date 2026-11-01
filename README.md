@@ -1,4 +1,4 @@
-# RAG Agent (Project 1)
+# RAG Agent 
 
 ![CI](https://github.com/theertha18/rag-agent/actions/workflows/ci.yml/badge.svg)
 
@@ -6,8 +6,6 @@ Minimal RAG API: drop documents in `docs/`, ingest them into a local Chroma
 vector store, then ask questions against them through a FastAPI endpoint
 that grounds its answer with an LLM (Gemini by default; Anthropic supported by setting `LLM_PROVIDER=anthropic`).
 
-This is the **tonight's-step** version — just ingestion + grounded Q&A.
-Tool calling and the agent loop come after this works end to end.
 
 ## Setup
 
