@@ -156,21 +156,21 @@ class GithubReposTests(unittest.TestCase):
 
     def test_unknown_user_raises_value_error(self):
         err = urllib.error.HTTPError("https://api.github.com", 404, "Not Found", {}, None)
-        with mock.patch("urllib.request.urlopen", side_effect=err):
-            with self.assertRaises(ValueError):
-                tools.github_repos("nobody")
+        with mock.patch("urllib.request.urlopen", side_effect=err), \
+                self.assertRaises(ValueError):
+            tools.github_repos("nobody")
 
     def test_rate_limit_raises_runtime_error(self):
         err = urllib.error.HTTPError("https://api.github.com", 403, "Forbidden", {}, None)
-        with mock.patch("urllib.request.urlopen", side_effect=err):
-            with self.assertRaises(RuntimeError):
-                tools.github_repos("u")
+        with mock.patch("urllib.request.urlopen", side_effect=err), \
+                self.assertRaises(RuntimeError):
+            tools.github_repos("u")
 
     def test_network_failure_raises_runtime_error(self):
         err = urllib.error.URLError("no route to host")
-        with mock.patch("urllib.request.urlopen", side_effect=err):
-            with self.assertRaises(RuntimeError):
-                tools.github_repos("u")
+        with mock.patch("urllib.request.urlopen", side_effect=err), \
+                self.assertRaises(RuntimeError):
+            tools.github_repos("u")
 
 
 if __name__ == "__main__":

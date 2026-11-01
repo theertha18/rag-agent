@@ -37,7 +37,8 @@ def main():
     # Fresh collection each run, so re-ingesting doesn't duplicate chunks.
     try:
         client.delete_collection(COLLECTION_NAME)
-    except Exception:
+    # The collection may not exist yet; a real failure will surface at create_collection.
+    except Exception:  # noqa: BLE001, S110
         pass
     collection = client.create_collection(COLLECTION_NAME)
 

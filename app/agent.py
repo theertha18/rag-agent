@@ -114,7 +114,8 @@ def run_tool(name: str, args: dict | None) -> dict:
     clean = {key: allowed[key](value) for key, value in (args or {}).items() if key in allowed}
     try:
         return {"result": spec["fn"](**clean)}
-    except Exception as error:
+    # Deliberate catch-all: any tool failure is reported to the model as text.
+    except Exception as error:  # noqa: BLE001
         return {"error": f"{type(error).__name__}: {error}"}
 
 
@@ -213,7 +214,8 @@ def main():
     for question in questions:
         try:
             ask(question)
-        except Exception as error:  # e.g. rate limit, bad key, no network
+        # Deliberate catch-all: show any failure (rate limit, bad key, no network) briefly.
+        except Exception as error:  # noqa: BLE001
             print(f"Stopped: {type(error).__name__}: {error}\n")
 
 

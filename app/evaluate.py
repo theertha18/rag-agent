@@ -55,9 +55,13 @@ def score_question(question: dict, retrieved: list[dict]) -> dict:
         if from_expected_file and source_rank is None:
             source_rank = rank
 
-        if from_expected_file and keywords and keyword_rank is None:
-            if any(contains_keyword(chunk["text"], k) for k in keywords):
-                keyword_rank = rank
+        if (
+            from_expected_file
+            and keywords
+            and keyword_rank is None
+            and any(contains_keyword(chunk["text"], k) for k in keywords)
+        ):
+            keyword_rank = rank
 
     return {"source_rank": source_rank, "keyword_rank": keyword_rank}
 
@@ -90,8 +94,10 @@ def diagnose(question: dict, all_chunks: list[dict], deep: list[dict], k: int) -
     if not holders:
         return [
             "NO chunk in the whole index contains an expected keyword.",
-            "-> the text is missing from docs/, or the keyword is wrong. "
-            "Check with Select-String before touching the retrieval code.",
+            (
+                "-> the text is missing from docs/, or the keyword is wrong. "
+                "Check with Select-String before touching the retrieval code."
+            ),
         ]
 
     counts: dict[str, int] = {}
@@ -140,7 +146,8 @@ def main():
     client = chromadb.PersistentClient(path=str(DB_DIR))
     try:
         collection = client.get_collection(COLLECTION_NAME)
-    except Exception:
+    # Chroma raises different exception types across versions for a missing collection.
+    except Exception:  # noqa: BLE001
         print("No ingested documents. Run `python -m app.ingest` first.")
         return
 

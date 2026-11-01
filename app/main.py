@@ -45,7 +45,8 @@ class AskResponse(BaseModel):
 def get_collection():
     try:
         return _client.get_collection(COLLECTION_NAME)
-    except Exception:
+    # Chroma raises different exception types across versions for a missing collection.
+    except Exception:  # noqa: BLE001
         raise HTTPException(
             status_code=400,
             detail="No documents ingested yet. Run `python -m app.ingest` first.",
@@ -91,7 +92,8 @@ def ask(request: AskRequest):
 
     try:
         answer_text = generate(prompt)
-    except Exception as e:
+    # Provider SDKs raise many exception types; report any of them as a 502.
+    except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=502, detail=f"LLM call failed: {e}")
 
     sources = [
